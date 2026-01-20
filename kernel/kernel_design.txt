@@ -1,40 +1,46 @@
-Morph Kernel Design (v0.1)
+Morph Kernel Design (v0.2) - Print & Emit
 
-Tujuan: Menyediakan API dasar (System Calls Wrapper) agar aplikasi tidak perlu syscall manual.
-Lokasi Memory: 0x600100 (Offset 256 byte dari base load 0x600000).
-Ini masih dalam range 4KB yang di-load oleh runner morph v0.1.
+Base Address: 0x600100 (Offset 256 from load base)
 
-Fungsi 1: printmorph
-Address: 0x600100
-Input:
-  rdi = pointer buffer string
-  rsi = panjang string
-Output:
-  Cetak ke stdout (fd 1).
-Register Clobbered: rax, rdx, rcx (syscall standard).
-Logic Assembly:
-  mov rax, 1 (sys_write)
-  mov rdx, rsi (length)
-  mov rsi, rdi (buffer)
-  mov rdi, 1 (stdout)
-  syscall
-  ret
+--- Function Map ---
+1. printmorph (0x600100)
+   - Input: rdi (buffer), rsi (len)
+   - Output: stdout write
+   - Size: 19 bytes (sampai 0x600113)
 
-Fungsi 2: panicmorph (Future)
-Address: 0x600120 (Offset +32 bytes)
-Logic: Print "KERNEL PANIC" dan exit(1).
+2. print_hex (0x600120) - [New]
+   - Input: rax (value to print)
+   - Output: Print "0x" + 16 chars hex + newline
+   - Logic:
+     - Push registers
+     - Convert rax nibbles to ASCII loop -> Store to Stack Buffer
+     - Syscall write buffer
+     - Pop registers
+   - Note: Ini kompleks di hex manual. Untuk v0.2 kita skip dulu, fokus ke emitter.
 
-Strategi Bundling:
-File .vzoel akan berisi:
-[0-7]     Header VZOELFOX
-[8-...]   App Code (Main)
-...       Padding NOP (0x90)
-[256-...] Kernel Code (printmorph)
+3. emit_byte (0x600160) - [New]
+   - Input: dl (byte to write)
+   - Global State: r15 (Current Emit Pointer)
+   - Logic:
+     - mov [r15], dl
+     - inc r15
+     - ret
 
-App Code Example:
-  mov rdi, [String Address]
-  mov rsi, [Length]
-  call 0x600100  ; Panggil fungsi kernel
-  mov rax, 60
-  xor rdi, rdi
-  syscall
+4. emit_dword (0x600180) - [New]
+   - Input: edx (dword to write)
+   - Global State: r15
+   - Logic:
+     - mov [r15], edx
+     - add r15, 4
+     - ret
+
+--- Memory Layout for App ---
+0x600000: Header VZOELFOX
+0x600008: App Code Start
+...
+0x600100: Kernel Code Start
+...
+0x600500: Emit Buffer (Area aman untuk menaruh kode hasil generate)
+
+--- Rencana Assemblage Core Extended ---
+Padding NOP antara fungsi sangat penting agar alamat aligned sesuai desain (0x100, 0x160, 0x180).
