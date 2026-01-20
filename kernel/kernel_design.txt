@@ -1,0 +1,40 @@
+Morph Kernel Design (v0.1)
+
+Tujuan: Menyediakan API dasar (System Calls Wrapper) agar aplikasi tidak perlu syscall manual.
+Lokasi Memory: 0x600100 (Offset 256 byte dari base load 0x600000).
+Ini masih dalam range 4KB yang di-load oleh runner morph v0.1.
+
+Fungsi 1: printmorph
+Address: 0x600100
+Input:
+  rdi = pointer buffer string
+  rsi = panjang string
+Output:
+  Cetak ke stdout (fd 1).
+Register Clobbered: rax, rdx, rcx (syscall standard).
+Logic Assembly:
+  mov rax, 1 (sys_write)
+  mov rdx, rsi (length)
+  mov rsi, rdi (buffer)
+  mov rdi, 1 (stdout)
+  syscall
+  ret
+
+Fungsi 2: panicmorph (Future)
+Address: 0x600120 (Offset +32 bytes)
+Logic: Print "KERNEL PANIC" dan exit(1).
+
+Strategi Bundling:
+File .vzoel akan berisi:
+[0-7]     Header VZOELFOX
+[8-...]   App Code (Main)
+...       Padding NOP (0x90)
+[256-...] Kernel Code (printmorph)
+
+App Code Example:
+  mov rdi, [String Address]
+  mov rsi, [Length]
+  call 0x600100  ; Panggil fungsi kernel
+  mov rax, 60
+  xor rdi, rdi
+  syscall
