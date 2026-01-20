@@ -1,0 +1,45 @@
+Morph Kernel Design (v0.3) - String Operations
+
+Base Address: 0x600100
+
+--- Function Map ---
+1. printmorph (0x600100)
+   - Size: 19 bytes.
+   - Next Pad: 0x600160.
+
+2. emit_byte (0x600160)
+   - Size: 7 bytes.
+   - Next Pad: 0x600180.
+
+3. emit_dword (0x600180)
+   - Size: 8 bytes.
+   - Next Pad: 0x6001C0 (Jauhkan sedikit untuk safety).
+
+4. streq (0x6001C0) - [New]
+   - Input:
+     rdi = str1 pointer
+     rsi = str2 pointer
+     rcx = length
+   - Output:
+     rax = 1 (Equal), 0 (Not Equal)
+   - Logic:
+     - cld (Clear Direction Flag) -> FC
+     - repe cmpsb (Compare bytes while equal) -> F3 A6
+     - jne not_equal (75 xx)
+     - mov rax, 1 (B8 01 00 00 00)
+     - ret (C3)
+     - not_equal:
+     - xor rax, rax (48 31 C0)
+     - ret (C3)
+
+--- Assembly Hex streq ---
+FC          cld
+F3 A6       repe cmpsb
+75 06       jne +6 (ke xor rax, rax)
+B8 01 00 00 00  mov eax, 1
+C3          ret
+48 31 C0    xor rax, rax
+C3          ret
+
+Total Size: 1 + 2 + 2 + 5 + 1 + 3 + 1 = 15 bytes.
+Fit in space.
