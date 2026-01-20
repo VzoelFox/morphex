@@ -1,0 +1,53 @@
+Cat Morph Design
+
+Tujuan: Membaca file "LICENSE" dan mencetaknya.
+
+Layout Memory:
+0x600000: Header
+0x600008: App Code
+...
+0x600100: Kernel v4 (IO)
+...
+0x600500: Buffer Read (1024 bytes)
+0x600900: String "LICENSE"
+
+App Logic:
+1. Open "LICENSE"
+   mov rdi, 0x600900 (filename)
+   mov rsi, 0 (O_RDONLY)
+   call 0x600200 (kopen)
+   mov r12, rax (save fd to r12)
+
+2. Read File
+   mov rdi, r12 (fd)
+   mov rsi, 0x600500 (buffer)
+   mov rdx, 1024 (len)
+   call 0x600220 (kread)
+   mov r13, rax (save bytes read)
+
+3. Print Buffer
+   mov rdi, 0x600500 (buffer)
+   mov rsi, r13 (len)
+   call 0x600100 (printmorph)
+
+4. Close File
+   mov rdi, r12 (fd)
+   call 0x600240 (kclose)
+
+5. Exit
+   mov rax, 60
+   xor rdi, rdi
+   syscall
+
+Opcode Generation:
+mov rdi, imm64 -> 48 BF ...
+mov rsi, imm64 -> 48 BE ...
+mov rdx, imm32 -> BA ... (1024 = 0x400)
+call -> mov rax, addr; call rax.
+
+Perhatian: Padding harus cukup agar Kernel ada di 0x600100.
+Kernel IO size 584 bytes.
+Jadi Buffer Read harus di atas 0x100 + 584 = 0x348.
+Kita taruh Buffer di 0x600500 (aman).
+String LICENSE di 0x600900 (aman).
+Total size file akan ~2.3KB. Runner load 4KB, aman.
