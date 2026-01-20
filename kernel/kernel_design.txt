@@ -1,46 +1,45 @@
-Morph Kernel Design (v0.2) - Print & Emit
+Morph Kernel Design (v0.3) - String Operations
 
-Base Address: 0x600100 (Offset 256 from load base)
+Base Address: 0x600100
 
 --- Function Map ---
 1. printmorph (0x600100)
-   - Input: rdi (buffer), rsi (len)
-   - Output: stdout write
-   - Size: 19 bytes (sampai 0x600113)
+   - Size: 19 bytes.
+   - Next Pad: 0x600160.
 
-2. print_hex (0x600120) - [New]
-   - Input: rax (value to print)
-   - Output: Print "0x" + 16 chars hex + newline
+2. emit_byte (0x600160)
+   - Size: 7 bytes.
+   - Next Pad: 0x600180.
+
+3. emit_dword (0x600180)
+   - Size: 8 bytes.
+   - Next Pad: 0x6001C0 (Jauhkan sedikit untuk safety).
+
+4. streq (0x6001C0) - [New]
+   - Input:
+     rdi = str1 pointer
+     rsi = str2 pointer
+     rcx = length
+   - Output:
+     rax = 1 (Equal), 0 (Not Equal)
    - Logic:
-     - Push registers
-     - Convert rax nibbles to ASCII loop -> Store to Stack Buffer
-     - Syscall write buffer
-     - Pop registers
-   - Note: Ini kompleks di hex manual. Untuk v0.2 kita skip dulu, fokus ke emitter.
+     - cld (Clear Direction Flag) -> FC
+     - repe cmpsb (Compare bytes while equal) -> F3 A6
+     - jne not_equal (75 xx)
+     - mov rax, 1 (B8 01 00 00 00)
+     - ret (C3)
+     - not_equal:
+     - xor rax, rax (48 31 C0)
+     - ret (C3)
 
-3. emit_byte (0x600160) - [New]
-   - Input: dl (byte to write)
-   - Global State: r15 (Current Emit Pointer)
-   - Logic:
-     - mov [r15], dl
-     - inc r15
-     - ret
+--- Assembly Hex streq ---
+FC          cld
+F3 A6       repe cmpsb
+75 06       jne +6 (ke xor rax, rax)
+B8 01 00 00 00  mov eax, 1
+C3          ret
+48 31 C0    xor rax, rax
+C3          ret
 
-4. emit_dword (0x600180) - [New]
-   - Input: edx (dword to write)
-   - Global State: r15
-   - Logic:
-     - mov [r15], edx
-     - add r15, 4
-     - ret
-
---- Memory Layout for App ---
-0x600000: Header VZOELFOX
-0x600008: App Code Start
-...
-0x600100: Kernel Code Start
-...
-0x600500: Emit Buffer (Area aman untuk menaruh kode hasil generate)
-
---- Rencana Assemblage Core Extended ---
-Padding NOP antara fungsi sangat penting agar alamat aligned sesuai desain (0x100, 0x160, 0x180).
+Total Size: 1 + 2 + 2 + 5 + 1 + 3 + 1 = 15 bytes.
+Fit in space.
