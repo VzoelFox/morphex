@@ -1,4 +1,4 @@
-Morph Kernel Design (v0.4) - File I/O
+Morph Kernel Design (v0.5.1) - Debug Fix
 
 Base Address: 0x600100
 
@@ -7,48 +7,72 @@ Base Address: 0x600100
 2. emit_byte (0x600160) -> Size 7.
 3. emit_dword (0x600180) -> Size 8.
 4. streq (0x6001C0) -> Size 15. Pad to 0x200 (Start I/O).
+5. kopen (0x600200) -> Size 11.
+6. kread (0x600220) -> Size 8.
+7. kclose (0x600240) -> Size 8.
+8. kwrite (0x600260) -> Size 8.
 
-5. kopen (0x600200) - [New]
-   - Input: rdi (filename), rsi (flags)
-   - Output: rax (fd)
+9. print_hex (0x600280) - [Safe Logic]
+   - Input: rax (Value 64-bit)
+   - Stack usage: Minimal (hanya push char untuk syscall pointer).
    - Logic:
-     mov rax, 2 (sys_open)
-     mov rdx, 0 (mode - ignored for RDONLY)
-     syscall
-     ret
+     1. Push Regs: rdi, rsi, rdx, rcx, rbx, r12 (57 56 52 51 53 41 54)
+     2. Mov rbx, rax (Save input)
+     3. Print prefix "0x":
+        - Push 'x' (0x78) -> 6A 78
+        - Push '0' (0x30) -> 6A 30
+        - Mov rdi, 1; Mov rsi, rsp; Mov rdx, 2; Mov rax, 1; Syscall.
+        - Add rsp, 16.
+     4. Loop 16 times (rcx=16):
+        - Rol rbx, 4 (Rotate saved val).
+        - Mov rax, rbx
+        - And rax, 0F
+        - Convert to ASCII (cmp 9...)
+        - Push rax (Push 8 bytes, char at rsp)
+        - Call kwrite(1, rsp, 1) -> Pake syscall langsung biar aman reg clobber.
+          Mov rdi, 1; Mov rsi, rsp; Mov rdx, 1; Mov rax, 1; Syscall.
+        - Pop rax (Clean stack).
+        - Loop.
+     5. Print Newline:
+        - Push 0x0A. Syscall write. Pop.
+     6. Pop Regs. Ret.
 
-6. kread (0x600220) - [New]
-   - Input: rdi (fd), rsi (buffer), rdx (len)
-   - Output: rax (bytes read)
-   - Logic:
-     mov rax, 0 (sys_read)
-     syscall
-     ret
+   - Hex Assembly Draft:
+     PushAll: 57 56 52 51 53 41 54
+     Mov rbx, rax: 48 89 C3
 
-7. kclose (0x600240) - [New]
-   - Input: rdi (fd)
-   - Output: rax (status)
-   - Logic:
-     mov rax, 3 (sys_close)
-     syscall
-     ret
+     Prefix:
+     Push 0x7830 (imm16? Push imm8 2x): 6A 78 6A 30
+     Mov rdi, 1: BF 01 00 00 00
+     Mov rsi, rsp: 48 89 E6
+     Mov rdx, 2: BA 02 00 00 00
+     Mov rax, 1: B8 01 00 00 00
+     Syscall: 0F 05
+     Add rsp, 16: 48 83 C4 10
 
---- Assembly Hex ---
-kopen:
-B8 02 00 00 00  (mov rax, 2)
-48 31 D2        (xor rdx, rdx)
-0F 05           (syscall)
-C3              (ret)
-Size: 5 + 3 + 2 + 1 = 11 bytes.
+     Mov rcx, 16: B9 10 00 00 00
+     Loop:
+     Rol rbx, 4: 48 C1 C3 04
+     Mov rax, rbx: 48 89 D8
+     And rax, 0F: 48 83 E0 0F
+     Cmp rax, 9: 48 83 F8 09
+     Jle +4: 76 04
+     Add rax, 7: 48 83 C0 07
+     Add rax, 30: 48 83 C0 30
+     Push rax: 50
+     Mov rdi, 1: BF 01 00 00 00
+     Mov rsi, rsp: 48 89 E6
+     Mov rdx, 1: BA 01 00 00 00
+     Mov rax, 1: B8 01 00 00 00
+     Syscall: 0F 05
+     Pop rax: 58
+     Dec rcx: 48 FF C9
+     Jnz Loop (-46 bytes approx): 75 D2
 
-kread:
-B8 00 00 00 00  (mov rax, 0)
-0F 05           (syscall)
-C3              (ret)
-Size: 5 + 2 + 1 = 8 bytes.
+     Newline:
+     Push 0x0A: 6A 0A
+     Mov rdi, 1... Syscall...
+     Pop rax: 58
 
-kclose:
-B8 03 00 00 00  (mov rax, 3)
-0F 05           (syscall)
-C3              (ret)
-Size: 5 + 2 + 1 = 8 bytes.
+     PopAll: 41 5C 5B 59 5A 5E 5F
+     Ret: C3
