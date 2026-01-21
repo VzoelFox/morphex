@@ -1,0 +1,50 @@
+JIT Emitter Test Design
+
+Tujuan: Menggunakan kernel emitter untuk menyusun instruksi mesin secara dinamis di memori, lalu menjalankannya.
+
+Memory Setup:
+Kernel Base: 0x600100
+emit_byte: 0x600160
+emit_dword: 0x600180
+Emit Target Buffer: 0x600500
+
+Target Generated Code (yang akan disusun oleh App):
+  mov eax, 60   (B8 3C 00 00 00)
+  xor edi, edi  (31 FF)
+  syscall       (0F 05)
+Total: 5 + 2 + 2 = 9 bytes.
+
+App Logic (Generator):
+1. Init Pointer:
+   mov r15, 0x600500 (49 BF 00 05 60 00 00 00 00 00)
+
+2. Emit "mov eax, 60" (B8 3C 00 00 00):
+   mov dl, 0xB8
+   call 0x600160 (emit_byte)
+   mov edx, 0x0000003C (Little Endian: 3C 00 00 00)
+   call 0x600180 (emit_dword)
+
+3. Emit "xor edi, edi" (31 FF):
+   mov dl, 0x31
+   call 0x600160
+   mov dl, 0xFF
+   call 0x600160
+
+4. Emit "syscall" (0F 05):
+   mov dl, 0x0F
+   call 0x600160
+   mov dl, 0x05
+   call 0x600160
+
+5. Jump to Generated Code:
+   mov rax, 0x600500
+   jmp rax
+
+Opcode Construction:
+- Mov R15, Imm64: 49 BF ...
+- Mov DL, Imm8: B2 xx
+- Call: mov rax, addr; call rax (FF D0) - *Safe way*
+
+Ukuran App Logic ini cukup besar. Kita harus pastikan padding sebelum kernel cukup.
+App start 0x600008. Kernel start 0x600100.
+Space available: ~248 bytes. Cukup.

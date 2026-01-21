@@ -1,0 +1,54 @@
+Mini Compiler Design (Compiler v0)
+
+Target:
+Membaca string source "keluar", mengenali command, dan generate code `exit(0)` JIT.
+
+Layout:
+0x600000: Header
+0x600008: Compiler Logic (App Code)
+...
+0x600100: Kernel v3
+...
+0x600500: JIT Buffer (Output)
+0x600600: Source String "keluar" (Input)
+0x600610: Keyword "keluar" (Ref)
+
+Compiler Logic (Assembly):
+1. Setup Compare:
+   mov rdi, 0x600600 (Source) -> 48 BF ...
+   mov rsi, 0x600610 (Ref)    -> 48 BE ...
+   mov rcx, 6 (Len "keluar")  -> 48 C7 C1 06 00 00 00
+   call 0x6001C0 (streq)
+
+2. Check Result:
+   cmp rax, 1 -> 48 83 F8 01
+   je do_compile -> 74 0C (Jump 12 bytes - skip error print)
+
+3. Error Path:
+   ; (Skip for now, simplicity: if fail, just crash/loop)
+   jmp 0x600008 (Loop forever / restart)
+
+4. Compile Path (do_compile):
+   mov r15, 0x600500 (JIT Buffer)
+
+   ; Emit exit(0) - Sama dengan test_emit
+   ; mov eax, 60 (B8 3C 00 00 00)
+   mov dl, 0xB8; call emit_byte; mov edx, 0x3C; call emit_dword
+
+   ; xor edi, edi (31 FF)
+   mov dl, 0x31; call emit_byte; mov dl, 0xFF; call emit_byte
+
+   ; syscall (0F 05)
+   mov dl, 0x0F; call emit_byte; mov dl, 0x05; call emit_byte
+
+   ; Run JIT
+   mov rax, 0x600500
+   jmp rax
+
+String Data Placement:
+Padding setelah Kernel sampai 0x500 (JIT Buffer) -> 0x600 (Data).
+Total File Size Estimasi: ~1.6KB (0x600-an).
+Runner Morph hanya load 0x1000 (4KB), jadi aman.
+
+Perlu Padding banyak untuk mencapai 0x600.
+Header(8) + App(Small) -> Padding -> Kernel(at 256) -> Padding -> Data(at 1536/0x600).

@@ -1,0 +1,54 @@
+Morph Kernel Design (v0.4) - File I/O
+
+Base Address: 0x600100
+
+--- Function Map ---
+1. printmorph (0x600100) -> Size 19.
+2. emit_byte (0x600160) -> Size 7.
+3. emit_dword (0x600180) -> Size 8.
+4. streq (0x6001C0) -> Size 15. Pad to 0x200 (Start I/O).
+
+5. kopen (0x600200) - [New]
+   - Input: rdi (filename), rsi (flags)
+   - Output: rax (fd)
+   - Logic:
+     mov rax, 2 (sys_open)
+     mov rdx, 0 (mode - ignored for RDONLY)
+     syscall
+     ret
+
+6. kread (0x600220) - [New]
+   - Input: rdi (fd), rsi (buffer), rdx (len)
+   - Output: rax (bytes read)
+   - Logic:
+     mov rax, 0 (sys_read)
+     syscall
+     ret
+
+7. kclose (0x600240) - [New]
+   - Input: rdi (fd)
+   - Output: rax (status)
+   - Logic:
+     mov rax, 3 (sys_close)
+     syscall
+     ret
+
+--- Assembly Hex ---
+kopen:
+B8 02 00 00 00  (mov rax, 2)
+48 31 D2        (xor rdx, rdx)
+0F 05           (syscall)
+C3              (ret)
+Size: 5 + 3 + 2 + 1 = 11 bytes.
+
+kread:
+B8 00 00 00 00  (mov rax, 0)
+0F 05           (syscall)
+C3              (ret)
+Size: 5 + 2 + 1 = 8 bytes.
+
+kclose:
+B8 03 00 00 00  (mov rax, 3)
+0F 05           (syscall)
+C3              (ret)
+Size: 5 + 2 + 1 = 8 bytes.
