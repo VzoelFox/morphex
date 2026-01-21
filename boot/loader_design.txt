@@ -1,0 +1,54 @@
+Morph Loader Design (ELF64)
+
+Tujuan: Membaca file dengan header "VZOELFOX", load ke memori, dan eksekusi.
+Base Address Loader: 0x400000
+Load Address Target: 0x500000 (Mmap atau Fixed Buffer)
+
+Agar tetap minimalis dan "Hex Murni", loader ini tidak akan melakukan `mmap` dinamis yang rumit.
+Loader akan mengalokasikan buffer statis besar (BSS) di akhir dirinya sendiri untuk menampung file target.
+
+Alur Kerja (Machine Code):
+1.  **Ambil Argumen:** Stack saat entry point: [argc] [argv0] [argv1 (filename)] ...
+    Loader dipanggil oleh binfmt_misc sebagai: `/path/loader /path/target`
+    Jadi: `pop rdi` (argc), `pop rdi` (argv0 - loader path), `pop rdi` (argv1 - target path).
+    Sekarang `rdi` berisi pointer ke string filename target.
+
+2.  **Open File:**
+    `mov rax, 2` (sys_open)
+    `mov rsi, 0` (O_RDONLY)
+    `mov rdx, 0`
+    `syscall`
+    Hasil: `rax` = file descriptor (fd). Simpan di register lain, misal `r8`.
+
+3.  **Read File:**
+    Kita baca langsung ke address memori `0x600000` (jauh dari loader di 0x400000).
+    `mov rdi, r8` (fd)
+    `mov rax, 0` (sys_read)
+    `mov rsi, 0x600000` (buffer address)
+    `mov rdx, 0x1000` (baca 4096 bytes - cukup untuk demo)
+    `syscall`
+
+4.  **Close File:**
+    `mov rdi, r8` (fd)
+    `mov rax, 3` (sys_close)
+    `syscall`
+
+5.  **Check Magic:**
+    Cek 8 byte pertama di `0x600000`.
+    Harus: `VZOELFOX` (0x56 0x5A 0x4F 0x45 0x4C 0x46 0x4F 0x58).
+    Jika salah, exit error. (Demi kesederhanaan, kita asumsikan selalu benar dulu atau crash kalau salah).
+
+6.  **Jump to Payload:**
+    Payload code mulai setelah header (offset 8).
+    `jmp 0x600008`
+
+--- ELF Header Loader ---
+Ukuran sama dengan seed (64 header + 56 phdr).
+Tapi MemSize harus besar agar menampung area 0x600000.
+VAddr: 0x400000.
+FileSize: Kecil (hanya loader).
+MemSize: 0x300000 (mapping sampai 0x700000 aman).
+Flags: R W X.
+
+--- Opcode Map ---
+... (Akan dihitung saat implementasi hex) ...
